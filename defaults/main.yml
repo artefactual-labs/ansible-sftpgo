@@ -1,0 +1,43 @@
+---
+
+sftpgo_api_auth_user: admin_api_user
+sftpgo_api_auth_key: "CHANGEME!PLEASE$"
+
+sftpgo_httpd_bind_port: 8081
+sftpgo_httpd_bind_address: 127.0.0.1
+
+sftpgo_sftpd_bind_port: 33322
+sftpgo_sftpd_bind_address: ""  # Listen in all VM addresses when empty
+
+# Optional, should ends in /
+#sftpgo_path_ssh_keys: "../../files/ssh_keys/"
+
+sftpgo_users: 
+  - user: user1
+    home_dir: /home/sftpgo
+    password: CHANGEME!2024
+    public_keys: 
+      - "ssh-ed25519 FAKE_KEY_XXXXXXXXXXXXXXXXXXXXXXX user1@artefactual.com"
+#  - user: user2
+#    home_dir: /home/sftpgo
+#    password: CHANGEME2!2024
+#    public_keys:
+#      - "ssh-ed25519 FAKE_KEY2_XXXXXXXXXXXXXXXXXXXXXXX user2@artefactual.com"
+#    public_keys_files: []
+#  - user: user3
+#    home_dir: /home/sftpgo
+#    password: CHANGEME3!2024
+#    public_keys: []
+#    public_keys_files:
+#      - ../../files/ssh_keys/key1.pub
+#      - ../../files/ssh_keys/key2.pub
+
+sftpgo_no_log: True
+
+# bindfs mounts (Optional)
+#sftpgo_bindfs_mounts:
+#  - src: /home/sftpgo
+#    path: /mnt/atom_uploads
+#    user: www-data
+#    group: www-data
+#    perms: 750

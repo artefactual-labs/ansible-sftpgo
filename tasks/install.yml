@@ -1,0 +1,10 @@
+---
+- name: Add sftpgo repo
+  apt_repository:
+    repo: ppa:sftpgo/sftpgo
+
+- name: Install sftpgo package
+  apt:
+    name: sftpgo
+    update_cache: yes
+    state: latest

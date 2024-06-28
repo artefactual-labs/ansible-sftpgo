@@ -1,0 +1,127 @@
+---
+- name: Create homedirs
+  file:
+    path: "{{ item.home_dir }}"
+    state: directory
+    owner: sftpgo
+    group: sftpgo
+    mode: '0755'
+  no_log: "{{ sftpgo_no_log | default('True') }}"
+  with_items:
+    - "{{ sftpgo_users }}"
+
+- name: Retrieve API token
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/token"
+    method: GET
+    return_content: yes
+    user: "{{ sftpgo_api_auth_user }}"
+    password: "{{ sftpgo_api_auth_key }}"
+    force_basic_auth: yes
+  register: login_response
+
+- name: Get list of all users already configured
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/users"
+    method: GET
+    return_content: yes
+    headers:
+      Authorization: "Bearer {{ login_response.json.access_token }}"
+    status_code: 200
+  register: users_list
+
+- name: Extract only usernames and create a new user list
+  set_fact:
+    usernames_list: "{{ users_list.json | map(attribute='username') | list }}"
+
+# Process sftpgo_users and look for keys in files
+
+- name: Initialize list for users with ssh keys from files
+  set_fact:
+    user_keys_dict: {}
+
+- name: Create a new tmp dict for users using ssh public key files
+  set_fact:
+    sftpgo_users_with_files: "{{ sftpgo_users | selectattr('public_keys_files', 'defined') | list }}"
+
+- name: Collect ssh public keys from files
+  set_fact:
+    user_keys_dict: >-
+      {{
+        user_keys_dict.update({
+          item.0.user: {
+            'user': item.0.user,
+            'home_dir': item.0.home_dir,
+            'password': item.0.password,
+            'public_keys': (user_keys_dict[item.0.user].public_keys | default(item.0.public_keys)) + [lookup('file', sftpgo_path_ssh_keys | default('') + item.1) | trim],
+            'public_keys_files': item.0.public_keys_files
+          }
+        }) or user_keys_dict
+      }}
+  loop: "{{ sftpgo_users_with_files | subelements('public_keys_files') | list }}"
+  loop_control:
+    loop_var: item
+  no_log: "{{ sftpgo_no_log | default('True') }}"
+
+- name: Update tmp dict for users using ssh public key files with the ssh keys
+  set_fact:
+    sftpgo_users_with_files: "{{ user_keys_dict.values() | list }}"
+
+- name: Add items in sftpgo_users with no ssh files to sftpgo_users_with_files
+  set_fact:
+    sftpgo_users_with_files: "{{ sftpgo_users_with_files + [item] }}"
+  no_log: "{{ sftpgo_no_log | default('True') }}"
+  loop: "{{ sftpgo_users }}"
+  loop_control:
+    loop_var: item
+  when: item.user not in sftpgo_users_with_files | map(attribute='user') | list
+
+# End process sftpgo_users
+
+- name: Create a new user
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/users"
+    method: POST
+    return_content: yes
+    body_format: json
+    body:
+      username: "{{ item.user }}"
+      password: "{{ item.password }}"
+      permissions: { "/": ["*"] }
+      status: 1
+      home_dir: "{{ item.home_dir }}"
+      public_keys: "{{ item.public_keys }}"
+    headers:
+      Authorization: "Bearer {{ login_response.json.access_token }}"
+      Content-Type: "application/json"
+    status_code: 201  # Expecting status code 201 for creation
+  register: user_creation_response
+  no_log: "{{ sftpgo_no_log | default('True') }}"
+  when:
+    - item.user not in usernames_list
+  with_items:
+    - "{{ sftpgo_users_with_files }}"
+
+- name: Update user
+  vars:
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/users/{{ item.user }}"
+    method: PUT
+    return_content: yes
+    body_format: json
+    body:
+      password: "{{ item.password }}"
+      permissions: { "/": ["*"] }
+      status: 1
+      home_dir: "{{ item.home_dir }}"
+      public_keys: "{{ item.public_keys }}"
+    headers:
+      Authorization: "Bearer {{ login_response.json.access_token }}"
+      Content-Type: "application/json"
+    status_code: 200
+  register: user_modification_response
+  no_log: "{{ sftpgo_no_log | default('True') }}"
+  when:
+    - item.user in usernames_list
+  with_items:
+    - "{{ sftpgo_users_with_files }}"

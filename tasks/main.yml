@@ -1,0 +1,25 @@
+---
+# tasks file for ansible-sftpgo role
+
+
+## Install sftpgo
+- import_tasks: "install.yml"
+  tags:
+    - "sftpgo-install"
+
+## Configure sftpgo
+- import_tasks: "configure.yml"
+  tags:
+    - "sftpgo-config"
+
+## Add sftpgo users
+- import_tasks: "users.yml"
+  tags:
+    - "sftpgo-users"
+
+## Add bindfs mount points
+- import_tasks: "bindfs.yml"
+  when:
+    - sftpgo_bindfs_mounts is defined
+  tags:
+    - "sftpgo-bindfs"

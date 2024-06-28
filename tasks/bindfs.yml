@@ -1,0 +1,27 @@
+---
+- name: Install bindfs package
+  apt:
+    name: bindfs
+    update_cache: yes
+    state: latest
+
+- name: Ensure bindfs directory exists
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: 0750
+  with_items:
+    - "{{ sftpgo_bindfs_mounts }}"
+
+- name: Add bindfs entry to /etc/fstab and mount it
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: fuse.bindfs
+    opts: "force-user={{ item.user }},force-group={{ item.group }},create-for-user={{ item.user }},create-for-group={{ item.group }},create-with-perms={{ item.perms }},perms={{ item.perms }}"
+    state: mounted
+  with_items:
+    - "{{ sftpgo_bindfs_mounts }}"
+

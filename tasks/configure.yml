@@ -1,0 +1,28 @@
+---
+- name: Update /etc/sftpgo/sftpgo.json
+  template:
+    src: "{{ item }}"
+    dest: "/etc/sftpgo/sftpgo.json"
+    backup: yes
+    owner: sftpgo
+    group: sftpgo
+    mode: 0640
+  with_first_found:
+    - templates/{{ inventory_hostname }}/sftpgo.json.j2
+    - templates/sftpgo/sftpgo.json.j2
+    - sftpgo.json.j2
+  notify: Restart sftpgo        # restart needed (reload does not seem to get changes)
+
+- name: Update /etc/sftpgo/sftpgo.env
+  template:
+    src: "{{ item }}"
+    dest: "/etc/sftpgo/sftpgo.env"
+    backup: yes
+    owner: sftpgo
+    group: sftpgo
+    mode: 0640
+  with_first_found:
+    - templates/{{ inventory_hostname }}/sftpgo.env.j2
+    - templates/sftpgo/sftpgo.env.j2
+    - sftpgo.env.j2
+  notify: Restart sftpgo        # restart needed (reload does not seem to get changes)
