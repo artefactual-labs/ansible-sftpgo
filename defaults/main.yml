@@ -1,5 +1,8 @@
 ---
 
+# You can get the rpm URL from https://github.com/drakkan/sftpgo/releases
+sftpgo_rpm_package_url: "https://github.com/drakkan/sftpgo/releases/download/v2.6.2/sftpgo-2.6.2-1.x86_64.rpm"
+
 sftpgo_api_auth_user: admin_api_user
 sftpgo_api_auth_key: "CHANGEME!PLEASE$"
 

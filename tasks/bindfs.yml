@@ -1,9 +1,8 @@
 ---
 - name: Install bindfs package
-  apt:
+  package:
     name: bindfs
-    update_cache: yes
-    state: latest
+    state: present
 
 - name: Ensure bindfs directory exists
   file:

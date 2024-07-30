@@ -1,10 +1,31 @@
 ---
-- name: Add sftpgo repo
+- name: Add sftpgo repo (Ubuntu)
   apt_repository:
     repo: ppa:sftpgo/sftpgo
+  when:
+    ansible_os_family == 'Debian'
 
-- name: Install sftpgo package
+- name: Install sftpgo package (Ubuntu)
   apt:
     name: sftpgo
     update_cache: yes
     state: latest
+  when:
+    ansible_os_family == 'Debian'
+
+- name: Install sftpgo Package (RedHat)
+  dnf:
+    name: "{{ sftpgo_rpm_package_url }}"
+    state: present
+    # Package not signed in github release Assets: https://github.com/drakkan/sftpgo/releases
+    disable_gpg_check: yes
+  when:
+    ansible_os_family == 'RedHat'
+
+- name: Enable and start sftpgo service (RedHat)
+  systemd:
+    name: sftpgo
+    state: started
+    enabled: True
+  when:
+    ansible_os_family == 'RedHat'
