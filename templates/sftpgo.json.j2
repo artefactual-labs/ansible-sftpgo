@@ -63,7 +63,7 @@
     "bindings": [
       {
         "port": {{ sftpgo_sftpd_bind_port | default('33322') }},
-        "address": "{{ sftpgo_sftpd_bind_address | default('') }}",
+        "address": "{{ sftpgo_sftpd_bind_address | default('') }}",
         "apply_proxy_config": true
       }
     ],
@@ -157,7 +157,7 @@
   "httpd": {
     "bindings": [
       {
-        "port": {{ sftpgo_httpd_bind_port | default('8081') }},
+        "port": {{ sftpgo_httpd_bind_port | default('8081') }},
         "address": "{{ sftpgo_httpd_bind_address | default('127.0.0.1') }}",
         "enable_web_admin": false,
         "enable_web_client": true,

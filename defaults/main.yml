@@ -23,6 +23,10 @@ sftpgo_users:
       - "ssh-ed25519 FAKE_KEY_XXXXXXXXXXXXXXXXXXXXXXX user1@artefactual.com"
 #  - user: user2
 #    home_dir: /home/sftpgo
+#    home_dir_perms: 555
+#    create_subdirs:
+#      - static
+#      - atom_uploads
 #    password: CHANGEME2!2024
 #    public_keys:
 #      - "ssh-ed25519 FAKE_KEY2_XXXXXXXXXXXXXXXXXXXXXXX user2@artefactual.com"

@@ -5,10 +5,26 @@
     state: directory
     owner: sftpgo
     group: sftpgo
-    mode: '0755'
+    mode: "{{ item.home_dir_perms | default('0755') }}"
   no_log: "{{ sftpgo_no_log | default('True') }}"
   with_items:
     - "{{ sftpgo_users }}"
+
+# This task is useful when setting home_dir_perms with something like 0555, this way the user cannot create
+# dirs or files in homedir directly. Here we are creating directories (cannot be deleted or renamed by sftpgo users)
+# where sftpgo users can upload or modify files
+- name: Create home_dir's subdirectories (optional)
+  file:
+    path: "{{ item.0.home_dir }}/{{ item.1 }}"
+    state: directory
+    owner: sftpgo
+    group: sftpgo
+    mode: "{{ item.0.subdir_perms | default('0755') }}"
+  with_subelements:
+    - "{{ sftpgo_users }}"
+    - create_subdirs
+  when: item.1 is defined and item.1|length > 0
+  no_log: "{{ sftpgo_no_log | default('True') }}"
 
 - name: Retrieve API token
   uri:
