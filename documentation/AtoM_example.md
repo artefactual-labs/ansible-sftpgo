@@ -383,6 +383,13 @@ ii  sftpgo                                2.6.2-1ppa1                           
 
 We have installed sftpgo from http://ppa.launchpad.net/sftpgo/sftpgo/ubuntu repo.
 
+The `bindfs` package was installed from official Ubuntu repo:
+
+```bash
+artefactual@atom-test:~$ dpkg -l | grep bindfs
+ii  bindfs                                1.14.1-1                                   amd64        mirrors or overlays a local directory with altered permissions
+```
+
 2. SFTPGo config files
 
 Ansible modifies:
