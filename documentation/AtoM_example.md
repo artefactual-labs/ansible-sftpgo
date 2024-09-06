@@ -12,8 +12,8 @@
   - [New sftpgo group](#new-sftpgo-group)
   - [Changes in ansible inventory file](#changes-in-ansible-inventory-file)
   - [Add ansible-sftpgo role to requirements file](#add-ansible-sftpgo-role-to-requirements-file)
-  - [Add sftpgo.yml file to host_vars dir](#add-sftpgo.yml-file-to-host_vars-dir)
-  - [Add sftpgo.yml playbook](#add-sftpgo.yml-playbook)
+  - [Add sftpgo.yml file to host_vars dir](#add-sftpgo-yml-file-to-host_vars-dir)
+  - [Add sftpgo.yml playbook](#add-sftpgo-yml-playbook)
 - [Running playbook](#running-playbook)
 - [Checking playbook results in VM](#checking-playbook-results-in-vm)
   
@@ -409,7 +409,7 @@ lrwxrwxrwx 1 root root 38 Sep  4 09:09 /etc/nginx/sites-enabled/sftpgo.conf -> /
 The homedir has been created with the desired permissions (0550):
 
 ```bash
-root@tpl-nginx:~# stat /home/sftpgo
+root@atom-test:~# stat /home/sftpgo
   File: /home/sftpgo
   Size: 4096      	Blocks: 8          IO Block: 4096   directory
 Device: fc01h/64513d	Inode: 514025      Links: 4
