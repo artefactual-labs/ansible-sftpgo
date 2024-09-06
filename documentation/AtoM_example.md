@@ -12,8 +12,8 @@
   - [New sftpgo group](#new-sftpgo-group)
   - [Changes in ansible inventory file](#changes-in-ansible-inventory-file)
   - [Add ansible-sftpgo role to requirements file](#add-ansible-sftpgo-role-to-requirements-file)
-  - [Add sftpgo.yml file to host_vars dir](#add-sftpgo-yml-file-to-host_vars-dir)
-  - [Add sftpgo.yml playbook](#add-sftpgo-yml-playbook)
+  - [Add sftpgo.yml file to host_vars dir](#add-sftpgoyml-file-to-host_vars-dir)
+  - [Add sftpgo.yml playbook](#add-sftpgoyml-playbook)
 - [Running playbook](#running-playbook)
 - [Checking playbook results in VM](#checking-playbook-results-in-vm)
   
