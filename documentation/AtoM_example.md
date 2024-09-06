@@ -512,3 +512,45 @@ This way, the `www-data` can read from `/home/atomadm/static` and can read/write
 
 You can upload files to SFTPGo home dir and check both bindfs mount point dirs and permissions.
 
+7. Check services
+
+The services are configured using the example.accesstomemory.org FQDN, defined in the `host_vars` file:
+
+```yaml
+# For nginx site
+server_name: "example.accesstomemory.org"
+server_alias: ""
+```
+
+Assuming your computer has an SSH key added from the `key_list`, use the following command for the `artefactual` user:
+
+```yaml
+key_list:
+  - 'user1.pub'
+  - 'user2.pub'
+  - 'user3.pub'
+```
+
+Use the following command for the `artefactual` user:
+
+```bash
+sftp -P22222 artefactual@example.accesstomemory.org
+```
+
+Alternatively, you need to used the `customer` user if your computer has any of the ssh keys installed from the string list:
+
+```yaml
+    public_keys:
+      - "ssh-ed25519 AAAACFAKEHASHKEYAAAAAAAAAAAAAAAAAA user1@customer.com"
+      - "ssh-ed25519 AAAACFAKEHASHKEYAAAAAAAAAAAAAAAAAA user1@customer.com"
+```
+
+So the sftp command for the `customer` user is:
+
+```bash
+sftp -P22222 customer@example.accesstomemory.org
+```
+
+For web clients, you can check with both user/password with a browser:
+
+* http://example.accesstomemory.org:7777
