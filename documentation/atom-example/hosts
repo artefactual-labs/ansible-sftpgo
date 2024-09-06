@@ -1,0 +1,7 @@
+---
+
+[atom]
+atom-test     ansible_ssh_host=example.accesstomemory.org   ansible_ssh_user=artefactual
+
+[sftpgo]
+atom-test

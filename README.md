@@ -159,6 +159,13 @@ server {
 
 Note the deny all to `/api`. It is because in role you should use the rest API without the reverse proxy
 
+## Examples
+
+The role is highly flexible, especially with permissions and BindFS settings. Below are detailed scenarios that demonstrate how to handle SFTPGo deployment and share home directories with other applications:
+
+* [AtoM VM with `static` and `atom_uploads` directories used by AtoM](documentation/AtoM_example.md)
+* [Archivematica VM with `transfer_source` and  AIP/DIP Store directories used by Archivematica](documentation/AM_example.md)
+
 ## License
 
 This role is licensed under the GNU Affero General Public License v3.0. See the [LICENSE](LICENSE) file for more details.

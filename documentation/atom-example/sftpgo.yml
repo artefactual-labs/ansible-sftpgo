@@ -1,0 +1,56 @@
+---
+
+- hosts: [sftpgo]
+
+  pre_tasks:
+  
+    - name: "SELinux: Allow nginx to use port 7777"
+      become: "yes"
+      seport:
+        ports: "7777"
+        proto: "tcp"
+        setype: "http_port_t"
+        state: "present"
+      when: ansible_selinux.status == "enabled"
+      tags:
+        - "selinux"
+
+    - name: "Configure sftpgo (22222) access from allowed sources"
+      become: "yes"
+      ufw:
+        rule: "allow"
+        proto: "tcp"
+        port: "22222"
+        from_ip: "{{ item }}"
+        state: "enabled"
+      loop: "{{ sftpgo_allowed_src_networks }}"
+      when: "sftpgo_allowed_src_networks is defined"
+      tags:
+        - "ufw"
+
+    - name: "Configure sftpgo web client (7777) access from allowed sources"
+      become: "yes"
+      ufw:
+        rule: "allow"
+        proto: "tcp"
+        port: "7777"
+        from_ip: "{{ item }}"
+        state: "enabled"
+      loop: "{{ sftpgo_allowed_src_networks }}"
+      when: "sftpgo_allowed_src_networks is defined"
+      tags:
+        - "ufw"
+        
+  roles:
+  
+    - role: "artefactual.sftpgo"
+      become: yes
+      tags:
+        - "sftpgo"
+
+    - role: "artefactual.nginx"
+      become: "yes"
+      nginx_configs: {}
+      nginx_sites: "{{ nginx_sftpgo_sites }}"
+      tags:
+        - "nginx"

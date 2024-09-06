@@ -1,0 +1,81 @@
+---
+
+#
+# sftpgo role variables
+#
+
+sftpgo_path_ssh_keys: "files/ssh_keys/"
+
+sftpgo_no_log: True
+
+sftpgo_api_auth_user: artef_admin_api_user
+sftpgo_api_auth_key: "SUPERSECRETKEY" # Must be in vault format
+          
+
+sftpgo_httpd_bind_port: 8081
+sftpgo_httpd_bind_address: 127.0.0.1
+
+sftpgo_sftpd_bind_port: 22222
+sftpgo_sftpd_bind_address: ""  # Listen in all VM addresses when empty
+
+sftpgo_bindfs_mounts:
+  - src: /home/sftpgo/atom_uploads
+    path: /mnt/atom_uploads
+    user: "{{ nginx_user }}"
+    group: "{{ nginx_user }}"
+    perms: 750
+  - src: /home/sftpgo/static
+    path: /home/atomadm/static
+    user: "{{ nginx_user }}"
+    group: "{{ nginx_user }}"
+    perms: 550
+
+sftpgo_users: []
+
+#
+# nginx role variables
+#
+
+nginx_user: "{% if ansible_os_family in ['RedHat','Rocky'] %}nginx{% elif ansible_os_family == 'Debian' %}www-data{% endif %}"
+
+nginx_sftpgo_sites:
+  sftpgo:
+    - listen 7777 ssl
+    - server_name {{ server_name|default('_') }} {{ server_alias | default('') }}
+    - ssl_certificate {{ sftpgo_https_certificate | default('/var/lib/acme/live/'+server_name+'/fullchain') }}
+    - ssl_certificate_key {{ sftpgo_https_certificate_key | default('/var/lib/acme/live/'+server_name+'/privkey') }}
+    - ssl_session_timeout 5m
+    - ssl_session_cache shared:SSL:50m
+    - ssl_protocols TLSv1.2 TLSv1.3
+    - ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305'
+    - ssl_prefer_server_ciphers on
+    - add_header Strict-Transport-Security max-age=63072000
+    - client_max_body_size {{ sftpgo_nginx_post_max_size | default('520M') }}
+    - proxy_max_temp_file_size {{ sftpgo_nginx_proxy_max_temp_file_size | default('1024m') }}
+    - location / {
+        proxy_pass http://{{ sftpgo_httpd_bind_address | default('127.0.0.1') }}:{{ sftpgo_httpd_bind_port | default('8081') }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+    - location /api/ {
+        deny all;
+      }
+
+#
+# Firewall settings
+#
+
+# Usually it be overriden in host_vars file when adding a customer network.
+sftpgo_allowed_src_networks:
+  - "6.6.6.0/24" # Artefactual network
+
+#
+# ssh key list
+#
+
+key_list:
+  - 'user1.pub'
+  - 'user2.pub'
+  - 'user3.pub'

@@ -92,22 +92,25 @@ We will configure UFW firewall rules to allow access to the following:
 
 # Preparing Ansible config files and playbook
 
-It is asumed we already have an ansible environment for AtoM deployment. We are going to:
+This assumes an existing Ansible environment for AtoM deployment. We will:
 
-* Add a new sftpgo group with common configuration for sftpgo, firewall and nginx for all AtoM VMs in the ansible environment.
-* Modify ansible hosts inventory file to include the AtoM VM in new sftpgo group.
-* Add this role to requirements file.
-* Add specific host variables for new playbook in a new file in host_vars dir.
-* Add new playbook to deploy sftpgo and configure bindfs using this role. The playbook will include the firewall and nginx configuration.
+* Create a new sftpgo group with common configuration for SFTPGo, firewall, and Nginx across AtoM VMs.
+* Modify the Ansible inventory to include AtoM VM in the sftpgo group.
+* Add the role to the `requirements.yml` file.
+* Add host-specific variables for the new playbook in the `host_vars` directory.
+* Create a new playbook to deploy SFTPGo and configure bindfs, including firewall and Nginx configuration.
+
 
 
 ### New sftpgo group
 
-The group creation is optional, but makes easier the host_vars config file when having all common config in the new group. You could directly configure all settings in host_vars file.
+Though optional, creating an sftpgo group simplifies configuration in the host_vars files by centralizing common settings.
 
-The group will be called `sftpgo` and the `group_vars/sftpgo` file will be created with the following lines:
+This file is have several sections that will be explained in next subsections. [Here](atom-example/sftpgo) you can find the complete file.
 
-1) sftpgo role common variables section
+Create the group by adding the `group_vars/sftpgo` file with the following content:
+
+1. SFTPGo role variables 
 
 ```yaml
 sftpgo_path_ssh_keys: "files/ssh_keys/"
@@ -159,7 +162,7 @@ The `nginx_user` will be defined in this file in nginx section
 `sftpgo_users` is an empty dict because we are going to define in every host_vars file, becuse it will be different for every customer
 
 
-2) nginx role variables
+2. Nginx role variables
 
 ```yaml
 nginx_user: "{% if ansible_os_family in ['RedHat','Rocky'] %}nginx{% elif ansible_os_family == 'Debian' %}www-data{% endif %}"
@@ -193,15 +196,15 @@ nginx_sftpgo_sites:
 
 Here we are defining the `nginx_user` based in Linux Distribution and the `nginx_sftpgo_sites` is a site config to be used with the [ansible-nginx role](https://github.com/artefactual-labs/ansible-nginx)
 
-3) Firewall settings
+3. Firewall settings
 
 ```yaml
 sftpgo_allowed_src_networks:
   - "6.6.6.0/24" # Artefactual network
 ```
-Here we are defining the `sftpgo_allowed_src_networks` with the allowed networks. Usually it be overriden in host_vars file when adding a customer network.
+Here we are defining the `sftpgo_allowed_src_networks` with the allowed networks. You can override `sftpgo_allowed_src_networks` in the `host_vars` file for each customer.
 
-4) Artefactual ssh keys
+4. Artefactual ssh keys
 
 ```yaml
 key_list:
@@ -215,7 +218,7 @@ We are including in the `key_list` list the name of ssh key files we want to add
 
 ### Changes in ansible inventory file
 
-If we already had the `atom-test` ansible_host defined in inventory, we could add to the `hosts` file the following lines to add the atom-test VM to new group:
+If the `atom-test` host is already defined in your inventory, add the VM to the new sftpgo group by appending the following to your hosts file:
 
 ```yaml
 [sftpgo]
@@ -224,7 +227,7 @@ atom-test
 
 ### Add ansible-sftpgo role to requirements file
 
-Add the following section to your `requirements.yml` file:
+In your requirements.yml, add the role with this configuration:
 
 ```yaml
 - src: "https://github.com/artefactual-labs/ansible-sftpgo.git"
@@ -234,7 +237,7 @@ Add the following section to your `requirements.yml` file:
 
 ### Add sftpgo.yml file to host_vars dir
 
-We can create the `host_vars/atom-test/sftpgo.yml` config file:
+Create a configuration file for the host at host_vars/atom-test/sftpgo.yml:
 
 ```yaml
 ---
@@ -280,13 +283,11 @@ sftpgo_allowed_src_networks:
   - "5.5.5.0/24" # customer
 ```
 
-We have defined some variables for the nginx site (hostname and certificate), the `sftpgo_users` and the `sftpgo_allowed_src_networks`.
-
-As you can see, we added 2 sftpgo users: `artefactual` and `customer`. Both customers are using the same sftpgo homedir, subdirs and permissions. Only the credentials are different. It is possible to use at the same time for a user `public_keys` and `public_keys_files` 
+This example defines nginx site variables, users, and allowed networks. Two users (artefactual and customer) share the same home directory structure, differing only in credentials. You can mix public_keys and public_keys_files for added flexibility.
 
 ### Add sftpgo.yml playbook
 
-The following playbook will use nginx and sftpgo roles and configure the firewall. It will allow nginx to use 7777 port when SELinux is enabled:
+This playbook configures SFTPGo, Nginx, and the firewall. It includes SELinux adjustments to allow Nginx to use port 7777 if SELinux is enabled.
 
 ```yaml
 - hosts: [sftpgo]
@@ -345,27 +346,35 @@ The following playbook will use nginx and sftpgo roles and configure the firewal
         - "nginx"
 ```
 
+This playbook handles firewall configuration based on allowed networks, integrates Nginx and SFTPGo roles, and applies SELinux policies where needed.
+
+[Here](atom-example/sftpgo.yml) you can download the playbook.
+
 # Running playbook
 
-Download/Update the roles in requeriments.yml:
+To install or update the roles specified in requirements.yml, run the following command:
 
 ```bash
 ansible-galaxy install -f -p roles/ -r requirements.yml
 ```
 
-Run the playbook:
+Run the playbook targeting the `atom-test` VM defined in your inventory:
 
 ```bash
 ansible-playbook -i hosts -l atom-test sftpgo.yml
 ```
 
+This command executes the sftpgo.yml playbook, applying the configuration to the atom-test host.
+
 # Checking playbook results in VM
 
-The AtoM VM should be ready now to use sftpgo with sftpd protocol (only with ssh keys) and   the sftpgo webclient.
+The AtoM VM should now be ready to use SFTPGo with SFTPD protocol (SSH keys only) and the SFTPGo web client.
 
 In VM (Ubuntu 20) we can see:
 
-1) Packages installed
+1. Packages installed
+
+Verify SFTPGo is installed from the Launchpad PPA:
 
 ```bash
 artefactual@atom-test:~$ dpkg -l | grep sftpgo
@@ -374,16 +383,18 @@ ii  sftpgo                                2.6.2-1ppa1                           
 
 We have installed sftpgo from http://ppa.launchpad.net/sftpgo/sftpgo/ubuntu repo.
 
-2) Sftpgo config files changed by ansible-sftpgo role
+2. SFTPGo config files
 
-With templates we have modified:
+Ansible modifies:
 
 * /etc/sftpgo/sftpgo.env
 * /etc/sftpgo/sftpgo.json
 
-3) Firewall rules
+All the other settings come from rpm or dpkg package.
 
-We can see the new rules added to UFW:
+3. Firewall rules
+
+Check new UFW rules for ports 22222 and 7777:
 
 ```bash
 artefactual@atom-test:~# sudo ufw status | grep -E '(7777|22222)'
@@ -393,7 +404,7 @@ artefactual@atom-test:~# sudo ufw status | grep -E '(7777|22222)'
 7777/tcp                  ALLOW       6.6.6.0/24
 ```
 
-5) nginx site
+4. nginx site
 
 The following nginx site has been created:
 
@@ -404,9 +415,9 @@ root@atom-test:~# ls -l /etc/nginx/sites-enabled/sftpgo.conf
 lrwxrwxrwx 1 root root 38 Sep  4 09:09 /etc/nginx/sites-enabled/sftpgo.conf -> /etc/nginx/sites-available/sftpgo.conf
 ```
 
-6) sftpgo home dir
+5. sftpgo home dir
 
-The homedir has been created with the desired permissions (0550):
+Verify correct permissions (0550) for the SFTPGo home directory:
 
 ```bash
 root@atom-test:~# stat /home/sftpgo
@@ -433,7 +444,7 @@ drwxr-x--- 2 sftpgo sftpgo 4.0K Sep  4 18:58 static
 
 When using sftpgo users, we can write/delete/update in both subdirectories. But `atom_uploads` and `static` dirs cannot be deleted (as we desired)
 
-7) bindfs mount points
+6. bindfs mount points
 
 The role added to fstab and mounted:
 
@@ -490,7 +501,7 @@ Change: 2024-09-04 18:58:57.191090190 +0000
  Birth: -
 ```
 
-This way, www-data can read from `/home/atomadm/static` and can read/write from `/mnt/atom_uploads`. 
+This way, the `www-data` can read from `/home/atomadm/static` and can read/write from `/mnt/atom_uploads`. 
 
-You can upload files to sftpgo home dir and check both bindfs mount point dirs and permissions.
+You can upload files to SFTPGo home dir and check both bindfs mount point dirs and permissions.
 
