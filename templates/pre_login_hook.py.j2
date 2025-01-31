@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+import os
+import json
+import logging
+
+# Setup logging
+log_file_path = "/dev/null"  # change in case you want to see the output
+logging.basicConfig(filename=log_file_path, level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+try:
+    # Check if the login protocol is OIDC
+    login_protocol = os.getenv("SFTPGO_LOGIND_PROTOCOL", "")
+    if login_protocol != "OIDC":
+        logging.info("Login attempt not using OIDC. Script will not proceed.")
+        exit(0)  # Exit without error, but do nothing more
+
+    # Log the protocol for confirmation
+    logging.info(f"Login protocol: {login_protocol}")
+
+    # Get user data from SFTPGO_LOGIND_USER, contains JSON-formatted user info
+    user_json_str = os.getenv("SFTPGO_LOGIND_USER", "{}")
+
+    # Log the raw JSON for troubleshooting
+    logging.info(f"Received SFTPGO_LOGIND_USER data: {user_json_str}")
+
+    # Convert the JSON string to a Python dictionary
+    user_info = json.loads(user_json_str)
+
+    # Define the base directory for all SFTPGo users
+    base_directory = "{{ sftpgo_oidc_user_pre_login_hook_base_directory }}"
+
+    # Construct the user configuration for SFTPGo
+    user_config = {
+        "username": user_info.get("username"),
+        "status": 1,  # Ensure the user is enabled
+        "external_auth": True,  # Mark as external authentication (OIDC only)
+        #"home_dir": os.path.join(base_directory, user_info.get("username")),  # User's home directory
+        "home_dir": base_directory,  # User's home directory
+        "permissions": {
+            "/": ["*"],  # Full permissions for the home directory
+        },
+        "email": user_info.get("email", ""),
+        # Include additional configurations as required
+    }
+
+    # Convert the Python dictionary back into a JSON string
+    user_config_json = json.dumps(user_config)
+
+    # Log the constructed user configuration
+    logging.info(f"Constructed user config for OIDC login: {user_config_json}")
+
+    # Print the JSON configuration to stdout to be consumed by SFTPGo
+    print(user_config_json)
+
+except Exception as e:
+    logging.error(f"Error processing data: {str(e)}")
+    # Exiting with a non-zero status to indicate failure
+    exit(1)

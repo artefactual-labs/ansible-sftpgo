@@ -118,7 +118,11 @@
     },
     "external_auth_hook": "",
     "external_auth_scope": 0,
+{%  if sftpgo_oidc_auth_enable|bool %}
+    "pre_login_hook": "{{ sftpgo_oidc_pre_login_hook_file }}",
+{%  else %}
     "pre_login_hook": "",
+{%  endif %}
     "post_login_hook": "",
     "post_login_scope": 0,
     "check_password_hook": "",
@@ -175,6 +179,20 @@
         "client_ip_header_depth": 0,
         "hide_login_url": 0,
         "render_openapi": true,
+{% if sftpgo_oidc_auth_enable|bool %}
+        "oidc": {
+          "client_id": "{{ sftpgo_oidc_client_id }}",
+          "client_secret": "{{ sftpgo_oidc_client_secret }}",
+          "client_secret_file": "",
+          "config_url": "{{ sftpgo_oidc_config_url }}",
+          "redirect_base_url": "{{ sftpgo_oidc_redirect_base_url  }}",
+          "scopes": [
+{%        for scope in sftpgo_oidc_scopes %}
+            "{{ scope }}"{% if not loop.last %},{% endif %}
+{%        endfor %}
+          ],
+          "username_field": "{{ sftpgo_oidc_username_field }}",
+{% else %}
         "oidc": {
           "client_id": "",
           "client_secret": "",
@@ -187,11 +205,19 @@
             "email"
           ],
           "username_field": "",
-          "role_field": "",
+{% endif %}
+{%        if sftpgo_oidc_implicit_roles|bool %}
+          "implicit_roles": true,
+{%        else %}
           "implicit_roles": false,
+{%        endif %}
+{%        if sftpgo_oidc_debug|bool %}
+          "debug": true,
+{%        else %}
+          "debug": false,
+{%        endif %}
           "custom_fields": [],
-          "insecure_skip_signature_check": false,
-          "debug": false
+          "insecure_skip_signature_check": false
         },
         "security": {
           "enabled": false,
