@@ -29,6 +29,19 @@
     - sftpgo.env.j2
   notify: Restart sftpgo        # restart needed (reload does not seem to get changes)
 
+- name: Add pre_login_hook script when sftpgo_oidc_auth_enable=True
+  template:
+    src: "{{ item }}"
+    dest: "{{ sftpgo_oidc_pre_login_hook_file }}"
+    owner: sftpgo
+    group: sftpgo
+    mode: 0750
+  with_first_found:
+    - templates/{{ inventory_hostname }}/pre_login_hook.py.j2
+    - templates/sftpgo/pre_login_hook.py.j2
+    - pre_login_hook.py.j2
+  notify: Restart sftpgo        # restart needed (reload does not seem to get changes)
+
 # Restart sftpgo always when api or config file changes
 - name: Restart sftpgo service
   systemd:

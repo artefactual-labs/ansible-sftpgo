@@ -92,6 +92,25 @@ Each item in the `sftpgo_bindfs_mounts` list can have the following attributes:
 | `perms`                           | The permissions to apply to the files in the destination directory. Optional.                   |
 | `options`                         | Additional options to pass to `bindfs`. Optional.                                               |
 
+### OIDC Auth for webclient (Optional) Configuration
+
+This role supports OIDC auth for webclient using a `pre_login_hook` script to create the oidc users. See: [SFTPGo OpenID Connect Doc](https://docs.sftpgo.com/2.6/oidc/)
+
+#### OIDC Auth for webclient Variables
+
+| Variable                          | Default Value                             | Description                                                                                     |
+|-----------------------------------|-------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `sftpgo_oidc_auth_enable`         | False                                     | Set to True to enable OIDC authentication for the web client.                                   |
+| `sftpgo_oidc_client_id`           | `""`                                      | OIDC client ID.                                                                                 |
+| `sftpgo_oidc_client_secret`       | `""`                                      | OIDC client secret.                                                                             |
+| `sftpgo_oidc_redirect_base_url`   | `""`                                      | Base URL for OIDC redirection. If using a reverse proxy, specify its FQDN and port. Example: "https://customer.archivematica.org:8443" |
+| `sftpgo_oidc_config_url`          | `""`                                      | OIDC configuration URL, excluding "/.well-known/openid-configuration". [SFTPGo OpenID Connect Doc](https://docs.sftpgo.com/2.6/oidc/) |
+| `sftpgo_oidc_username_field`      | `"preferred_username"`                    | The claim in the OIDC ID token to be used as the SFTPGo username. Common values: "preferred_username", "email", or "sub". Ensure the chosen field is unique and consistent for user authentication. |
+| `sftpgo_oidc_implicit_roles`      | True                                      | When enabled (True), SFTPGo will automatically assign roles based on OIDC claims. If disabled (False), roles must be explicitly assigned within SFTPGo. Useful for mapping user roles from the identity provider. |
+| `sftpgo_oidc_scopes`              | `[ "openid", "profile", "email" ]`        | List of OIDC scopes requested during authentication. These define the level of access granted by the identity provider (IdP). Modify this list if additional scopes are needed based on your IdP configuration. |
+| `sftpgo_oidc_debug`               | False                                     | Enable (True) or disable (False) OIDC debug logging. When enabled, additional debug logs related to OIDC authentication will be recorded to help troubleshoot login issues. Recommended to keep disabled in production to avoid excessive logging. |
+| `sftpgo_oidc_pre_login_hook_file` | `"/usr/local/bin/sftpgo_pre_login_hook.py"` | Hook script to create oidc users |
+| `sftpgo_oidc_user_pre_login_hook_base_directory` | `"/home/sftpgo"`           | Homedir used by oidp users |
 
 ## Example Playbook
 
