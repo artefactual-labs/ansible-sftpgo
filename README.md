@@ -78,6 +78,7 @@ This role supports the use of `bindfs` to mount directories with altered permiss
 | Variable                          | Default Value                             | Description                                                                                     |
 |-----------------------------------|-------------------------------------------|-------------------------------------------------------------------------------------------------|
 | `sftpgo_bindfs_mounts`            | `[]`                                      | A list of `bindfs` mounts to create. Each mount is represented as a dictionary.                 |
+| `bindfs_apply_selinux_http_policy`| True                                      | Create and apply a custom SELinux policy to let Nginx read FUSE-mounted files (fusefs_t)        |
 
 #### Bindfs Mount Configuration
 
@@ -91,6 +92,7 @@ Each item in the `sftpgo_bindfs_mounts` list can have the following attributes:
 | `group`                           | The group to own the files in the destination directory. Optional.                              |
 | `perms`                           | The permissions to apply to the files in the destination directory. Optional.                   |
 | `options`                         | Additional options to pass to `bindfs`. Optional.                                               |
+| `allow_selinux_http_t`            | Optional, allow SELinux http_t context on src dir. Default True                                 |
 
 ### OIDC Auth for webclient (Optional) Configuration
 

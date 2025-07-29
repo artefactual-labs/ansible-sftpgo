@@ -24,3 +24,68 @@
   with_items:
     - "{{ sftpgo_bindfs_mounts }}"
 
+# Allow fusefs SELinux
+- name: "Allow systemd (init_t) to read fusefs to httpd_sys_rw_content_t"
+  block:
+
+    - name: Install SELinux development tools (RHEL-based)
+      package:
+        name:
+          - "python3-policycoreutils"
+          - "python3-libsemanage"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: "Write SELinux policy source"
+      copy:
+        dest: /tmp/policy_selinux_fuse.te
+        content: |
+          module policy_selinux_fuse 1.0;
+
+          require {
+            type httpd_t;
+            type fusefs_t;
+            class file { read open getattr };
+          }
+
+          allow httpd_t fusefs_t:file { read open getattr };
+
+    - name: "Compile policy module"
+      command: checkmodule -M -m -o /tmp/policy_selinux_fuse.mod /tmp/policy_selinux_fuse.te
+      args:
+        creates: /tmp/policy_selinux_fuse.mod
+
+    - name: "Package policy module"
+      command: semodule_package -o /tmp/policy_selinux_fuse.pp -m /tmp/policy_selinux_fuse.mod
+      args:
+        creates: /tmp/policy_selinux_fuse.pp
+
+    - name: "Install SELinux policy module"
+      command: semodule -i /tmp/policy_selinux_fuse.pp
+      args:
+        creates: /var/lib/selinux/targeted/active/modules/400/policy_selinux_fuse.pp
+
+    - name: "Delete SElinux policy tmp files"
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/policy_selinux_fuse.te
+        - /tmp/policy_selinux_fuse.mod
+        - /tmp/policy_selinux_fuse.pp
+
+  when:
+    - "ansible_selinux is defined and ansible_selinux != False and ansible_selinux.status == 'enabled'"
+    - "bindfs_apply_selinux_http_policy|bool"
+# End block fusefs SELinux
+
+- name: Allow SELinux http_t in bindfs_mounts
+  sefcontext:
+    target: "{{ item.src }}(/.*)?"
+    setype: httpd_sys_content_t
+    state: present
+  when:
+    - "item.allow_selinux_http_t | default(True) | bool"
+    - "ansible_selinux is defined and ansible_selinux != False and ansible_selinux.status == 'enabled'"
+  with_items:
+    - "{{ sftpgo_bindfs_mounts }}"
