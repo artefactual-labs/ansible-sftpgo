@@ -48,6 +48,10 @@ sftpgo_no_log: True
 #    user: www-data
 #    group: www-data
 #    perms: 750
+#    allow_selinux_http_t: True # Optional, default True
+
+# Create and apply a custom SELinux policy to let Nginx read FUSE-mounted files (fusefs_t).
+bindfs_apply_selinux_http_policy: True
 
 # Optional OIDC settings (only for webclient)
 
