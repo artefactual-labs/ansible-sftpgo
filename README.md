@@ -59,6 +59,8 @@ Each user in `sftpgo_users` can have the following attributes:
 |
 | `public_keys_files`               | The `public_keys_files` variable is an optional list where you can specify paths to files containing SSH public keys. Each file should contain a valid SSH public key. These keys will be added to the user's authorized keys, enabling key-based authentication. This variable is useful when you prefer to store SSH keys in separate files rather than inline within your playbook. |
 
+Any additional SFTPGo user fields are passed through to the REST API. This allows you to configure advanced settings such as `filesystem`, `virtual_folders`, `quota_size`, `quota_files`, `filters`, `groups`, and similar per-user options directly from `sftpgo_users`.
+
 ### Network Configuration Options
 
 | Variable                          | Default Value                             | Description                                                                                     |
@@ -179,6 +181,55 @@ server {
 Note the deny all to `/api`. It is because in role you should use the rest API without the reverse proxy
 
 ## Examples
+
+### S3 backend per user
+
+You can provision a user backed by S3 by adding a `filesystem` section to the user definition:
+
+```yaml
+sftpgo_users:
+  - user: "customer-a-sftp"
+    password: "CHANGEME"
+    filesystem:
+      provider: 1
+      s3config:
+        bucket: "my-sftp-bucket"
+        region: "us-east-1"
+        key_prefix: "clients/customer-a/root/"
+        access_key: "{{ vault_s3_access_key }}"
+        access_secret:
+          status: "Plain"
+          payload: "{{ vault_s3_secret_key }}"
+```
+
+For non-local backends, `home_dir` is optional. The role will only create local directories and subdirectories if `home_dir` is defined. SFTPGo still uses local disk on the host for temporary file handling when working with S3-compatible storage.
+
+`key_prefix` should end with a trailing slash. The intended use is to scope each client or each mounted area to its own prefix within a shared bucket, so one client cannot browse or overwrite another client's objects. For example, if multiple clients share the same bucket, you can assign prefixes such as `clients/customer-a/root/`, `clients/customer-b/root/`, or more specific prefixes such as `clients/customer-a/transfer_source/` and `clients/customer-a/aips/`.
+
+### Local home plus S3 virtual folder
+
+If you want to keep a local home directory and also expose S3 storage, use `virtual_folders`:
+
+```yaml
+sftpgo_users:
+  - user: "customer-a-sftp"
+    home_dir: "/home/sftpgo/customer-a"
+    password: "CHANGEME"
+    virtual_folders:
+      - virtual_path: "/client-transfer"
+        filesystem:
+          provider: 1
+          s3config:
+            bucket: "my-sftp-bucket"
+            region: "us-east-1"
+            key_prefix: "clients/customer-a/transfer_source/"
+            access_key: "{{ vault_s3_access_key }}"
+            access_secret:
+              status: "Plain"
+              payload: "{{ vault_s3_secret_key }}"
+```
+
+This pattern is intended for mixed deployments where the same client still needs local SFTPGo paths such as `transfer_source`, `aip_store`, or `dip_store`, but also needs direct access to an S3-backed area through the same account. In that setup, the local paths remain unchanged and each S3 virtual folder is mounted at a distinct path with its own client-specific `key_prefix`.
 
 The role is highly flexible, especially with permissions and BindFS settings. Below are detailed scenarios that demonstrate how to handle SFTPGo deployment and share home directories with other applications:
 

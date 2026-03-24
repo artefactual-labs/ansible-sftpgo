@@ -7,6 +7,7 @@
     group: sftpgo
     mode: "{{ item.home_dir_perms | default('0755') }}"
   no_log: "{{ sftpgo_no_log | default('True') }}"
+  when: item.home_dir is defined
   with_items:
     - "{{ sftpgo_users }}"
 
@@ -23,7 +24,10 @@
   with_subelements:
     - "{{ sftpgo_users }}"
     - create_subdirs
-  when: item.1 is defined and item.1|length > 0
+  when:
+    - item.0.home_dir is defined
+    - item.1 is defined
+    - item.1|length > 0
   no_log: "{{ sftpgo_no_log | default('True') }}"
 
 - name: Retrieve API token
@@ -96,18 +100,29 @@
 # End process sftpgo_users
 
 - name: Create a new user
+  vars:
+    sftpgo_user_body: >-
+      {{
+        {
+          'status': 1,
+          'permissions': {"/": ["*"]},
+          'public_keys': []
+        }
+        | combine(
+          item
+          | dict2items
+          | rejectattr('key', 'in', ['user', 'create_subdirs', 'home_dir_perms', 'subdir_perms', 'public_keys_files'])
+          | items2dict,
+          recursive=True
+        )
+        | combine({'username': item.user}, recursive=True)
+      }}
   uri:
     url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/users"
     method: POST
     return_content: yes
     body_format: json
-    body:
-      username: "{{ item.user }}"
-      password: "{{ item.password }}"
-      permissions: { "/": ["*"] }
-      status: 1
-      home_dir: "{{ item.home_dir }}"
-      public_keys: "{{ item.public_keys }}"
+    body: "{{ sftpgo_user_body }}"
     headers:
       Authorization: "Bearer {{ login_response.json.access_token }}"
       Content-Type: "application/json"
@@ -121,17 +136,27 @@
 
 - name: Update user
   vars:
+    sftpgo_user_body: >-
+      {{
+        {
+          'status': 1,
+          'permissions': {"/": ["*"]},
+          'public_keys': []
+        }
+        | combine(
+          item
+          | dict2items
+          | rejectattr('key', 'in', ['user', 'create_subdirs', 'home_dir_perms', 'subdir_perms', 'public_keys_files'])
+          | items2dict,
+          recursive=True
+        )
+      }}
   uri:
     url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/users/{{ item.user }}"
     method: PUT
     return_content: yes
     body_format: json
-    body:
-      password: "{{ item.password }}"
-      permissions: { "/": ["*"] }
-      status: 1
-      home_dir: "{{ item.home_dir }}"
-      public_keys: "{{ item.public_keys }}"
+    body: "{{ sftpgo_user_body }}"
     headers:
       Authorization: "Bearer {{ login_response.json.access_token }}"
       Content-Type: "application/json"
