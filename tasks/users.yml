@@ -65,13 +65,14 @@
     user_keys_dict: >-
       {{
         user_keys_dict.update({
-          item.0.user: {
-            'user': item.0.user,
-            'home_dir': item.0.home_dir,
-            'password': item.0.password,
-            'public_keys': (user_keys_dict[item.0.user].public_keys | default(item.0.public_keys)) + [lookup('file', sftpgo_path_ssh_keys | default('') + item.1) | trim],
-            'public_keys_files': item.0.public_keys_files
-          }
+          item.0.user: (
+            user_keys_dict[item.0.user] | default(item.0)
+          ) | combine({
+            'public_keys': (
+              (user_keys_dict[item.0.user].public_keys | default(item.0.public_keys | default([])))
+              + [lookup('file', sftpgo_path_ssh_keys | default('') + item.1) | trim]
+            )
+          }, recursive=True)
         }) or user_keys_dict
       }}
   loop: "{{ sftpgo_users_with_files | subelements('public_keys_files') | list }}"
