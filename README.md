@@ -43,6 +43,103 @@ The role uses `ppa:sftpgo/sftpgo` repo for Ubuntu and a direct link to rpm packa
 | `sftpgo_users`                    | `[]`                                      | A list of users to be created in SFTPGo. Each user can have additional configuration parameters. |
 | `sftpgo_path_ssh_keys`            | ""                                        | The `sftpgo_path_ssh_keys` variable specifies the directory path where SSH public key files are stored. This path is prepended to the filenames listed in public_keys_files for each user. The variable is optional, but if used, it must end with a / to correctly concatenate with the filenames. This variable is particularly useful when you already have a list of filenames for SSH keys (public_keys_files) and want to define the directory separately. By setting sftpgo_path_ssh_keys, you can avoid repeating the directory path for each key file, making your configuration cleaner and more manageable. |
 
+### Optional S3 virtual folders
+
+Set `sftpgo_s3_virtual_folders` to create and update S3-backed virtual folders.
+Each folder is created once in SFTPGo and can then be mounted for one or more users.
+The quota defaults are defined at the folder level for a concise per-customer
+configuration, although SFTPGo applies them to each user-folder mapping.
+
+```yaml
+sftpgo_s3_virtual_folders:
+  - name: customer-incoming
+    bucket: artefactual-ingest
+    region: eu-west-1
+    key_prefix: customers/customer/incoming/
+    quota_size: 10 GB
+    quota_files: 10000
+    # For AWS, prefer an instance/task/service-account IAM role and omit both
+    # access_key and access_secret.
+    # access_key: "{{ vault_s3_access_key }}"
+    # access_secret: "{{ vault_s3_access_secret }}"
+    # endpoint: https://minio.example.org
+    # force_path_style: true
+
+sftpgo_users:
+  - user: customer
+    home_dir: /home/sftpgo/customer
+    password: "{{ vault_customer_password }}"
+    virtual_folders:
+      - name: customer-incoming
+        virtual_path: /incoming
+        access: protected
+```
+
+`key_prefix` must not start with `/` and, when set, must end with `/`. The S3
+bucket must already exist; its prefix does not need to be created.
+
+The role validates this configuration before calling the SFTPGo API:
+
+```yaml
+# Valid: unique folder name and an absolute, non-root mount path.
+sftpgo_s3_virtual_folders:
+  - name: customer-incoming
+    bucket: artefactual-ingest
+    region: eu-west-1
+    key_prefix: customers/customer/incoming/
+
+sftpgo_users:
+  - user: customer
+    home_dir: /home/sftpgo/customer
+    password: "{{ vault_customer_password }}"
+    virtual_folders:
+      - name: customer-incoming
+        virtual_path: /incoming
+        access: protected
+```
+
+Folder names must be unique. A user must not map the same folder name or mount
+path twice. Mount paths must begin with `/` and cannot be `/` itself; for
+example, `incoming` and `/` are rejected.
+
+Each user mapping must reference a name in `sftpgo_s3_virtual_folders`. Set
+`access` to one of these modes, or omit it to use the safer `protected` mode:
+
+| Access mode | SFTPGo permissions |
+|-------------|--------------------|
+| `protected` (default) | list and download only; all changes are denied |
+| `read-write` | all permissions, including deletion |
+
+Use `protected` for an Archivematica AIP store: users can browse and download
+AIPs, but cannot upload or otherwise alter the preserved content.
+
+The mapping's `access` value is the only way to choose its permission model;
+do not add a `permissions` field to a mapping or define `permissions` on a user
+that has S3 virtual folders. The role rejects those settings and applies its
+fixed profiles instead. This avoids an accidental broader permission (for
+example, a nested `*` rule) overriding the read-only policy and changing
+preservation data. Writable aliases to the same S3 bucket/prefix and nested
+mounts below a protected path are also rejected for the same reason.
+
+The role derives the user-folder permissions. If the user does not declare
+`permissions`, users with virtual folders receive `list` permission at `/`;
+users without virtual folders retain the role's existing `*` permission at
+`/`. You can set `quota_size` or `quota_files` on an individual user mapping
+to override the folder default. `quota_size` accepts a byte count or Ansible
+size notation such as `500MB`, `10 GB`, or `1TB`; both compact and spaced unit
+forms are accepted and converted to bytes before being sent to SFTPGo.
+`quota_files` is always a file count. Both quota values use `0` for unlimited;
+use `-1` for both values to include a private virtual folder in the user's
+overall quota. Quota usage is tracked only for operations performed through
+SFTPGo.
+
+For defense in depth, use an S3 identity with list/read-only access for a
+protected folder. SFTPGo permissions prevent changes through that user's SFTP
+session, but do not protect data from administrators, other SFTPGo accounts,
+or clients using backend credentials directly. For preservation-grade
+immutability, configure the object store's retention/Object Lock controls too.
+Read-write mappings need object-write and delete access.
+
 #### User Configuration
 
 Each user in `sftpgo_users` can have the following attributes:
@@ -58,6 +155,7 @@ Each user in `sftpgo_users` can have the following attributes:
 | `public_keys`                     | The `public_keys` variable is an optional list where you can specify one or more SSH public keys for the user. These keys will be used for key-based authentication. Each key should be a valid SSH public key string in a supported format (e.g., ssh-ed25519, ssh-rsa, etc.). |
 |
 | `public_keys_files`               | The `public_keys_files` variable is an optional list where you can specify paths to files containing SSH public keys. Each file should contain a valid SSH public key. These keys will be added to the user's authorized keys, enabling key-based authentication. This variable is useful when you prefer to store SSH keys in separate files rather than inline within your playbook. |
+| `virtual_folders`                 | Optional list of S3 virtual-folder mappings. Each mapping requires `name` and `virtual_path`; `access` defaults to `protected`. Quota values default to the matching `sftpgo_s3_virtual_folders` entry. |
 
 ### Network Configuration Options
 

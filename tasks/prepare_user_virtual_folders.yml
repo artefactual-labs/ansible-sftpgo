@@ -1,0 +1,144 @@
+---
+- name: Initialise resolved virtual folders for user
+  set_fact:
+    sftpgo_user_resolved_virtual_folders: []
+    sftpgo_user_normalized_virtual_folders: []
+    sftpgo_user_resolved_permissions: >-
+      {{ sftpgo_user.permissions | default({'/': ['list'] if (sftpgo_user.virtual_folders | default([]) | length > 0) else ['*']}) }}
+
+- name: Validate S3 virtual folder mappings
+  assert:
+    that:
+      - item.name is defined
+      - item.access | default('protected') in ['protected', 'read-write']
+      - item.virtual_path is defined
+      - (item.virtual_path | default('') | string).startswith('/')
+      - item.virtual_path | default('') != '/'
+      - item.name | default('') in sftpgo_s3_virtual_folder_index
+      - item.permissions is not defined
+    fail_msg: >-
+      User {{ sftpgo_user.user }} must reference a known S3 virtual folder,
+      use access protected or read-write, and set virtual_path to an absolute
+      non-root path such as /incoming. Permission lists are role-managed and
+      must not be set on a mapping.
+  loop: "{{ sftpgo_user.virtual_folders | default([]) }}"
+  loop_control:
+    label: "{{ sftpgo_user.user }}:{{ item.name }}"
+
+- name: Validate unique virtual folder mappings for user
+  assert:
+    that:
+      - >-
+        (sftpgo_user.virtual_folders | default([]) | map(attribute='name') | list | length)
+        == (sftpgo_user.virtual_folders | default([]) | map(attribute='name') | unique | list | length)
+      - >-
+        (sftpgo_user.virtual_folders | default([]) | map(attribute='virtual_path') | list | length)
+        == (sftpgo_user.virtual_folders | default([]) | map(attribute='virtual_path') | unique | list | length)
+    fail_msg: >-
+      User {{ sftpgo_user.user }} must not map the same virtual folder name or
+      virtual_path more than once.
+
+- name: Require role-managed permissions for users with S3 virtual folders
+  assert:
+    that:
+      - sftpgo_user.permissions is not defined
+    fail_msg: >-
+      User {{ sftpgo_user.user }} must not define permissions when using S3
+      virtual folders; select access with each mapping's access value.
+  when: sftpgo_user.virtual_folders | default([]) | length > 0
+
+- name: Initialize S3 folder scopes for this user
+  set_fact:
+    sftpgo_user_folder_scopes: []
+
+- name: Resolve S3 folder scopes for this user
+  set_fact:
+    sftpgo_user_folder_scopes: >-
+      {{ sftpgo_user_folder_scopes + [sftpgo_s3_virtual_folder_index[item.name] | combine({
+        'name': item.name,
+        'access': item.access | default('protected'),
+        'virtual_path': item.virtual_path
+      })] }}
+  loop: "{{ sftpgo_user.virtual_folders | default([]) }}"
+  loop_control:
+    label: "{{ sftpgo_user.user }}:{{ item.name }}"
+
+- name: Prevent writable mounts from overlapping protected S3 data
+  assert:
+    that:
+      - >-
+        not (
+          item.0.bucket == item.1.bucket
+          and (item.0.endpoint | default('')) == (item.1.endpoint | default(''))
+          and (
+            (item.0.key_prefix | default('') | length == 0)
+            or (item.1.key_prefix | default('') | length == 0)
+            or (item.0.key_prefix | default('')).startswith(item.1.key_prefix | default(''))
+            or (item.1.key_prefix | default('')).startswith(item.0.key_prefix | default(''))
+          )
+        )
+    fail_msg: >-
+      User {{ sftpgo_user.user }} cannot map overlapping S3 data as both
+      protected and read-write.
+  loop: >-
+    {{ sftpgo_user_folder_scopes | selectattr('access', 'equalto', 'protected') | list
+       | product(sftpgo_user_folder_scopes | selectattr('access', 'equalto', 'read-write') | list) | list }}
+  loop_control:
+    label: "{{ item.0.name }} / {{ item.1.name }}"
+
+- name: Prevent writable mounts inside protected virtual paths
+  assert:
+    that:
+      - >-
+        not (
+          item.0.virtual_path.startswith(item.1.virtual_path.rstrip('/') + '/')
+          or item.1.virtual_path.startswith(item.0.virtual_path.rstrip('/') + '/')
+        )
+    fail_msg: >-
+      User {{ sftpgo_user.user }} cannot nest another virtual folder under or
+      above protected mount {{ item.0.virtual_path }}.
+  loop: >-
+    {{ sftpgo_user_folder_scopes | selectattr('access', 'equalto', 'protected') | list
+       | product(sftpgo_user_folder_scopes) | list }}
+  when: item.0.name != item.1.name
+  loop_control:
+    label: "{{ item.0.virtual_path }} / {{ item.1.virtual_path }}"
+
+- name: Resolve S3 virtual folder quota defaults
+  set_fact:
+    sftpgo_user_resolved_virtual_folders: >-
+      {{ sftpgo_user_resolved_virtual_folders + [item | combine({
+        'quota_size': item.quota_size | default(sftpgo_s3_virtual_folder_index[item.name].quota_size | default(0)),
+        'quota_files': item.quota_files | default(sftpgo_s3_virtual_folder_index[item.name].quota_files | default(0))
+      })] }}
+  loop: "{{ sftpgo_user.virtual_folders | default([]) }}"
+  loop_control:
+    label: "{{ sftpgo_user.user }}:{{ item.name }}"
+
+- name: Convert S3 virtual folder quota sizes to bytes
+  set_fact:
+    sftpgo_user_normalized_virtual_folders: >-
+      {{ sftpgo_user_normalized_virtual_folders + [item | combine({
+        'quota_size': item.quota_size if (item.quota_size | string) == '-1' else (item.quota_size | human_to_bytes(default_unit='B'))
+      })] }}
+  loop: "{{ sftpgo_user_resolved_virtual_folders }}"
+  loop_control:
+    label: "{{ sftpgo_user.user }}:{{ item.name }}"
+
+- name: Set S3 virtual folder permissions for user
+  set_fact:
+    sftpgo_user_resolved_permissions: >-
+      {{ sftpgo_user_resolved_permissions | combine({
+        item.virtual_path: sftpgo_s3_virtual_folder_permissions[item.access | default('protected')]
+      }) }}
+  loop: "{{ sftpgo_user.virtual_folders | default([]) }}"
+  loop_control:
+    label: "{{ sftpgo_user.user }}:{{ item.name }}"
+
+- name: Add resolved virtual folders to user list
+  set_fact:
+    sftpgo_users_with_virtual_folders: >-
+      {{ (sftpgo_users_with_virtual_folders | default([])) + [sftpgo_user | combine({
+        'virtual_folders': sftpgo_user_normalized_virtual_folders,
+        'permissions': sftpgo_user_resolved_permissions
+      })] }}

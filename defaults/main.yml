@@ -41,6 +41,10 @@ sftpgo_users:
 
 sftpgo_no_log: True
 
+# Optional S3-backed virtual folders. Quotas are defined here and applied to
+# each user mapping that references the folder. See README.md for the schema.
+sftpgo_s3_virtual_folders: []
+
 # bindfs mounts (Optional)
 #sftpgo_bindfs_mounts:
 #  - src: /home/sftpgo

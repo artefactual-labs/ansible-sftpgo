@@ -2,7 +2,7 @@ galaxy_info:
   author: Artefactual Systems
   description: An ansible role for sftpgo
   company: Artefactual Systems
-  min_ansible_version: 2.10
+  min_ansible_version: 2.15.10
   platforms:
   - name: EL
     versions:

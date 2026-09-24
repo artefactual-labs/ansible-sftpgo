@@ -12,6 +12,14 @@
   tags:
     - "sftpgo-config"
 
+## Add optional S3 virtual folders before assigning them to users
+- import_tasks: "s3_virtual_folders.yml"
+  when:
+    - sftpgo_s3_virtual_folders | length > 0
+  tags:
+    - "sftpgo-s3-virtual-folders"
+    - "sftpgo-users"
+
 ## Add sftpgo users
 - import_tasks: "users.yml"
   tags:

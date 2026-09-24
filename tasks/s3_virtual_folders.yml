@@ -1,0 +1,142 @@
+---
+- name: Validate required S3 virtual folder settings
+  assert:
+    that:
+      - item.name is defined
+      - item.name | default('') | string | length > 0
+      - item.bucket is defined
+      - item.bucket | default('') | string | length > 0
+      - item.region is defined
+      - item.region | default('') | string | length > 0
+      - item.key_prefix is not defined or item.key_prefix | string | length == 0 or (not item.key_prefix.startswith('/') and item.key_prefix.endswith('/'))
+    fail_msg: >-
+      Each sftpgo_s3_virtual_folders item requires a non-empty name, bucket,
+      and region. key_prefix must be empty or must not start with / and end
+      with /.
+  loop: "{{ sftpgo_s3_virtual_folders }}"
+  loop_control:
+    label: "{{ item.name | default('<unnamed>') }}"
+
+- name: Validate unique S3 virtual folder names
+  assert:
+    that:
+      - >-
+        (sftpgo_s3_virtual_folders | map(attribute='name') | list | length)
+        == (sftpgo_s3_virtual_folders | map(attribute='name') | unique | list | length)
+    fail_msg: "Each sftpgo_s3_virtual_folders item must have a unique name."
+
+- name: Retrieve API token for S3 virtual folders
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/token"
+    method: GET
+    return_content: yes
+    user: "{{ sftpgo_api_auth_user }}"
+    password: "{{ sftpgo_api_auth_key }}"
+    force_basic_auth: yes
+  register: sftpgo_s3_login_response
+  no_log: "{{ sftpgo_no_log | default(True) }}"
+
+- name: Check whether S3 virtual folders already exist
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/folders/{{ item.name | urlencode }}"
+    method: GET
+    return_content: yes
+    headers:
+      Authorization: "Bearer {{ sftpgo_s3_login_response.json.access_token }}"
+    status_code: [200, 404]
+  register: sftpgo_s3_folder_lookup
+  loop: "{{ sftpgo_s3_virtual_folders }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: "{{ sftpgo_no_log | default(True) }}"
+
+- name: Create S3 virtual folders
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/folders"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ item.item.name }}"
+      description: "{{ item.item.description | default('') }}"
+      filesystem:
+        provider: 1
+        s3config: >-
+          {{
+            {
+              'bucket': item.item.bucket,
+              'region': item.item.region,
+              'key_prefix': item.item.key_prefix | default('')
+            }
+            | combine({'access_key': item.item.access_key} if item.item.access_key is defined else {})
+            | combine({'access_secret': {'status': 'Plain', 'payload': item.item.access_secret}} if item.item.access_secret is defined else {})
+            | combine({'role_arn': item.item.role_arn} if item.item.role_arn is defined else {})
+            | combine({'endpoint': item.item.endpoint} if item.item.endpoint is defined else {})
+            | combine({'force_path_style': item.item.force_path_style} if item.item.force_path_style is defined else {})
+          }}
+    headers:
+      Authorization: "Bearer {{ sftpgo_s3_login_response.json.access_token }}"
+      Content-Type: "application/json"
+    status_code: 201
+  when: item.status == 404
+  loop: "{{ sftpgo_s3_folder_lookup.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  no_log: "{{ sftpgo_no_log | default(True) }}"
+
+- name: Initialise list of S3 virtual folders to update
+  set_fact:
+    sftpgo_s3_folders_to_update: []
+
+- name: Identify changed S3 virtual folders
+  set_fact:
+    sftpgo_s3_folders_to_update: "{{ sftpgo_s3_folders_to_update + [item] }}"
+  when:
+    - item.status == 200
+    - >-
+      item.json.description | default('') != item.item.description | default('')
+      or item.json.filesystem.provider | int != 1
+      or item.json.filesystem.s3config.bucket != item.item.bucket
+      or item.json.filesystem.s3config.region != item.item.region
+      or item.json.filesystem.s3config.key_prefix | default('') != item.item.key_prefix | default('')
+      or item.json.filesystem.s3config.access_key | default('') != item.item.access_key | default('')
+      or item.json.filesystem.s3config.role_arn | default('') != item.item.role_arn | default('')
+      or item.json.filesystem.s3config.endpoint | default('') != item.item.endpoint | default('')
+      or item.json.filesystem.s3config.force_path_style | default(false) | bool != item.item.force_path_style | default(false) | bool
+      or item.item.access_secret is defined
+  loop: "{{ sftpgo_s3_folder_lookup.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  no_log: "{{ sftpgo_no_log | default(True) }}"
+
+- name: Update changed S3 virtual folders
+  uri:
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/folders/{{ item.item.name | urlencode }}"
+    method: PUT
+    body_format: json
+    body:
+      name: "{{ item.item.name }}"
+      description: "{{ item.item.description | default('') }}"
+      filesystem:
+        provider: 1
+        s3config: >-
+          {{
+            {
+              'bucket': item.item.bucket,
+              'region': item.item.region,
+              'key_prefix': item.item.key_prefix | default('')
+            }
+            | combine({'access_key': item.item.access_key} if item.item.access_key is defined else {})
+            | combine({'access_secret': {'status': 'Plain', 'payload': item.item.access_secret}} if item.item.access_secret is defined else {'access_secret': {'status': 'Redacted'}})
+            | combine({'role_arn': item.item.role_arn} if item.item.role_arn is defined else {})
+            | combine({'endpoint': item.item.endpoint} if item.item.endpoint is defined else {})
+            | combine({'force_path_style': item.item.force_path_style} if item.item.force_path_style is defined else {})
+          }}
+    headers:
+      Authorization: "Bearer {{ sftpgo_s3_login_response.json.access_token }}"
+      Content-Type: "application/json"
+    status_code: 200
+  when: item.status == 200
+  loop: "{{ sftpgo_s3_folders_to_update }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  no_log: "{{ sftpgo_no_log | default(True) }}"

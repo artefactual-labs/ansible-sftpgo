@@ -1,0 +1,7 @@
+---
+sftpgo_s3_virtual_folder_permissions:
+  protected:
+    - list
+    - download
+  read-write:
+    - '*'

@@ -20,21 +20,22 @@
     owner: sftpgo
     group: sftpgo
     mode: "{{ item.0.subdir_perms | default('0755') }}"
-  with_subelements:
-    - "{{ sftpgo_users }}"
-    - create_subdirs
-  when: item.1 is defined and item.1|length > 0
+  loop: "{{ sftpgo_users | subelements('create_subdirs', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.user }}:{{ item.1 }}"
+  when: item.1 | string | length > 0
   no_log: "{{ sftpgo_no_log | default('True') }}"
 
 - name: Retrieve API token
   uri:
-    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/token"
+    url: "http://{{ sftpgo_httpd_bind_address }}:{{ sftpgo_httpd_bind_port }}/api/v2/token"
     method: GET
     return_content: yes
     user: "{{ sftpgo_api_auth_user }}"
     password: "{{ sftpgo_api_auth_key }}"
     force_basic_auth: yes
   register: login_response
+  no_log: "{{ sftpgo_no_log | default(True) }}"
 
 - name: Get list of all users already configured
   uri:
@@ -56,22 +57,35 @@
   set_fact:
     user_keys_dict: {}
 
+- name: Initialize S3 virtual folder index
+  set_fact:
+    sftpgo_s3_virtual_folder_index: {}
+
+- name: Index S3 virtual folders by name
+  set_fact:
+    sftpgo_s3_virtual_folder_index: "{{ sftpgo_s3_virtual_folder_index | combine({item.name: item}) }}"
+  loop: "{{ sftpgo_s3_virtual_folders }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Resolve S3 virtual folders and their permissions for users
+  include_tasks: prepare_user_virtual_folders.yml
+  loop: "{{ sftpgo_users }}"
+  loop_control:
+    loop_var: sftpgo_user
+
 - name: Create a new tmp dict for users using ssh public key files
   set_fact:
-    sftpgo_users_with_files: "{{ sftpgo_users | selectattr('public_keys_files', 'defined') | list }}"
+    sftpgo_users_with_files: "{{ sftpgo_users_with_virtual_folders | selectattr('public_keys_files', 'defined') | list }}"
 
 - name: Collect ssh public keys from files
   set_fact:
     user_keys_dict: >-
       {{
         user_keys_dict.update({
-          item.0.user: {
-            'user': item.0.user,
-            'home_dir': item.0.home_dir,
-            'password': item.0.password,
-            'public_keys': (user_keys_dict[item.0.user].public_keys | default(item.0.public_keys)) + [lookup('file', sftpgo_path_ssh_keys | default('') + item.1) | trim],
-            'public_keys_files': item.0.public_keys_files
-          }
+          item.0.user: item.0 | combine({
+            'public_keys': (user_keys_dict[item.0.user].public_keys | default(item.0.public_keys | default([]))) + [lookup('file', sftpgo_path_ssh_keys | default('') + item.1) | trim]
+          })
         }) or user_keys_dict
       }}
   loop: "{{ sftpgo_users_with_files | subelements('public_keys_files') | list }}"
@@ -87,7 +101,7 @@
   set_fact:
     sftpgo_users_with_files: "{{ sftpgo_users_with_files + [item] }}"
   no_log: "{{ sftpgo_no_log | default('True') }}"
-  loop: "{{ sftpgo_users }}"
+  loop: "{{ sftpgo_users_with_virtual_folders }}"
   loop_control:
     loop_var: item
   when: item.user not in sftpgo_users_with_files | map(attribute='user') | list
@@ -103,10 +117,11 @@
     body:
       username: "{{ item.user }}"
       password: "{{ item.password }}"
-      permissions: { "/": ["*"] }
+      permissions: "{{ item.permissions | default({ '/': ['*'] }) }}"
       status: 1
       home_dir: "{{ item.home_dir }}"
-      public_keys: "{{ item.public_keys }}"
+      public_keys: "{{ item.public_keys | default([]) }}"
+      virtual_folders: "{{ item.virtual_folders | default([]) }}"
     headers:
       Authorization: "Bearer {{ login_response.json.access_token }}"
       Content-Type: "application/json"
@@ -127,10 +142,11 @@
     body_format: json
     body:
       password: "{{ item.password }}"
-      permissions: { "/": ["*"] }
+      permissions: "{{ item.permissions | default({ '/': ['*'] }) }}"
       status: 1
       home_dir: "{{ item.home_dir }}"
-      public_keys: "{{ item.public_keys }}"
+      public_keys: "{{ item.public_keys | default([]) }}"
+      virtual_folders: "{{ item.virtual_folders | default([]) }}"
     headers:
       Authorization: "Bearer {{ login_response.json.access_token }}"
       Content-Type: "application/json"
