@@ -1,0 +1,137 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    sftpgo_api_auth_user: sftpgo_ci_admin
+    sftpgo_api_auth_key: sftpgo_ci_admin_password
+    sftpgo_httpd_bind_address: 127.0.0.1
+    sftpgo_httpd_bind_port: 8081
+    sftpgo_no_log: true
+    sftpgo_ci_s3_endpoint: http://seaweedfs:8333
+    sftpgo_s3_virtual_folders:
+      - name: ci-protected
+        bucket: sftpgo-ci
+        region: us-east-1
+        endpoint: "{{ sftpgo_ci_s3_endpoint }}"
+        force_path_style: true
+        access_key: sftpgo-ci-access
+        access_secret: sftpgo-ci-secret
+        key_prefix: protected/
+        quota_size: 10MB
+        quota_files: 100
+      - name: ci-read-write
+        bucket: sftpgo-ci
+        region: us-east-1
+        endpoint: "{{ sftpgo_ci_s3_endpoint }}"
+        force_path_style: true
+        access_key: sftpgo-ci-access
+        access_secret: sftpgo-ci-secret
+        key_prefix: read-write/
+    sftpgo_user:
+      user: customer
+      home_dir: /tmp/sftpgo-ci-customer
+      password: sftpgo_ci_customer_password
+      virtual_folders:
+        - name: ci-protected
+          virtual_path: /protected
+          access: protected
+        - name: ci-read-write
+          virtual_path: /read-write
+          access: read-write
+  tasks:
+    - name: Manage the test S3 folders in SFTPGo
+      include_tasks: ../tasks/s3_virtual_folders.yml
+
+    - name: Initialize S3 folder index
+      set_fact:
+        sftpgo_s3_virtual_folder_index: {}
+
+    - name: Index S3 folders
+      set_fact:
+        sftpgo_s3_virtual_folder_index: "{{ sftpgo_s3_virtual_folder_index | combine({item.name: item}) }}"
+      loop: "{{ sftpgo_s3_virtual_folders }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Resolve test user folder mappings
+      include_tasks: ../tasks/prepare_user_virtual_folders.yml
+
+    - name: Retrieve API token for user provisioning
+      uri:
+        url: http://127.0.0.1:8081/api/v2/token
+        method: GET
+        user: "{{ sftpgo_api_auth_user }}"
+        password: "{{ sftpgo_api_auth_key }}"
+        force_basic_auth: true
+        return_content: true
+      register: sftpgo_ci_login
+      no_log: true
+
+    - name: Check whether the test SFTP user already exists
+      uri:
+        url: http://127.0.0.1:8081/api/v2/users/customer
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sftpgo_ci_login.json.access_token }}"
+        status_code: [200, 404]
+      register: sftpgo_ci_existing_user
+      no_log: true
+
+    - name: Create test SFTP user
+      uri:
+        url: http://127.0.0.1:8081/api/v2/users
+        method: POST
+        body_format: json
+        body:
+          username: customer
+          password: sftpgo_ci_customer_password
+          status: 1
+          home_dir: /tmp/sftpgo-ci-customer
+          public_keys: []
+          permissions: "{{ sftpgo_users_with_virtual_folders[0].permissions }}"
+          virtual_folders: "{{ sftpgo_users_with_virtual_folders[0].virtual_folders }}"
+        headers:
+          Authorization: "Bearer {{ sftpgo_ci_login.json.access_token }}"
+        status_code: 201
+      when: sftpgo_ci_existing_user.status == 404
+      no_log: true
+
+    - name: Update test SFTP user
+      uri:
+        url: http://127.0.0.1:8081/api/v2/users/customer
+        method: PUT
+        body_format: json
+        body:
+          username: customer
+          password: sftpgo_ci_customer_password
+          status: 1
+          home_dir: /tmp/sftpgo-ci-customer
+          public_keys: []
+          permissions: "{{ sftpgo_users_with_virtual_folders[0].permissions }}"
+          virtual_folders: "{{ sftpgo_users_with_virtual_folders[0].virtual_folders }}"
+        headers:
+          Authorization: "Bearer {{ sftpgo_ci_login.json.access_token }}"
+        status_code: 200
+      when: sftpgo_ci_existing_user.status == 200
+      no_log: true
+
+    - name: Read the provisioned SFTP user
+      uri:
+        url: http://127.0.0.1:8081/api/v2/users/customer
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sftpgo_ci_login.json.access_token }}"
+        status_code: 200
+        return_content: true
+      register: sftpgo_ci_user
+      no_log: true
+
+    - name: Verify folder mappings, quota and protected permissions
+      assert:
+        that:
+          - sftpgo_ci_user.json.virtual_folders | selectattr('name', 'equalto', 'ci-protected') | map(attribute='quota_size') | first == 10485760
+          - sftpgo_ci_user.json.permissions['/protected'] == ['list', 'download']
+          - sftpgo_ci_user.json.permissions['/read-write'] == ['*']

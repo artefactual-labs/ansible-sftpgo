@@ -1,0 +1,142 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    sftpgo_s3_virtual_folder_index:
+      customer-incoming:
+        bucket: test-bucket
+        key_prefix: customer/incoming/
+        quota_size: 10MB
+        quota_files: 100
+      customer-private:
+        bucket: test-bucket
+        key_prefix: customer/private/
+        quota_size: -1
+        quota_files: -1
+    sftpgo_user:
+      user: customer
+      virtual_folders:
+        - name: customer-incoming
+          virtual_path: /incoming
+        - name: customer-private
+          virtual_path: /private
+          access: read-write
+  tasks:
+    - name: Resolve virtual folder mappings
+      include_tasks: ../tasks/prepare_user_virtual_folders.yml
+
+    - name: Check resolved virtual folder mappings
+      assert:
+        that:
+          - sftpgo_users_with_virtual_folders[0].virtual_folders[0].quota_size == 10485760
+          - sftpgo_users_with_virtual_folders[0].virtual_folders[0].quota_files == 100
+          - sftpgo_users_with_virtual_folders[0].virtual_folders[1].quota_size == -1
+          - sftpgo_users_with_virtual_folders[0].permissions['/incoming'] == ['list', 'download']
+          - sftpgo_users_with_virtual_folders[0].permissions['/private'] == ['*']
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    sftpgo_s3_virtual_folder_index:
+      customer-incoming:
+        bucket: test-bucket
+        key_prefix: customer/incoming/
+    sftpgo_user:
+      user: customer
+      virtual_folders:
+        - name: customer-incoming
+          virtual_path: incoming
+          access: protected
+  tasks:
+    - name: Reject an invalid virtual folder path
+      block:
+        - include_tasks: ../tasks/prepare_user_virtual_folders.yml
+      rescue:
+        - assert:
+            that:
+              - "'absolute non-root path' in ansible_failed_result.results[0].msg"
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    sftpgo_s3_virtual_folder_index:
+      aip-read-only:
+        bucket: preservation
+        key_prefix: aip/
+      aip-writable-alias:
+        bucket: preservation
+        key_prefix: aip/derivatives/
+    sftpgo_user:
+      user: customer
+      virtual_folders:
+        - name: aip-read-only
+          virtual_path: /aip
+          access: protected
+        - name: aip-writable-alias
+          virtual_path: /derivatives
+          access: read-write
+  tasks:
+    - name: Reject a read-write alias of protected S3 data
+      block:
+        - include_tasks: ../tasks/prepare_user_virtual_folders.yml
+      rescue:
+        - assert:
+            that:
+              - "'overlapping S3 data' in ansible_failed_result.results[0].msg"
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    sftpgo_s3_virtual_folder_index:
+      aip-read-only:
+        bucket: preservation
+        key_prefix: aip/
+    sftpgo_user:
+      user: customer
+      permissions:
+        /aip/override: ['*']
+      virtual_folders:
+        - name: aip-read-only
+          virtual_path: /aip
+          access: protected
+  tasks:
+    - name: Reject custom permissions for an S3-mapped user
+      block:
+        - include_tasks: ../tasks/prepare_user_virtual_folders.yml
+      rescue:
+        - assert:
+            that:
+              - "'must not define permissions' in ansible_failed_result.msg"
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sftpgo_users:
+      - user: customer-without-subdirs
+      - user: customer-with-subdirs
+        create_subdirs:
+          - uploads
+  tasks:
+    - name: Resolve optional home directory subdirectories
+      set_fact:
+        resolved_subdirectories: "{{ sftpgo_users | subelements('create_subdirs', skip_missing=True) }}"
+
+    - name: Check users without create_subdirs are skipped
+      assert:
+        that:
+          - resolved_subdirectories | length == 1
+          - resolved_subdirectories[0][0].user == 'customer-with-subdirs'
+          - resolved_subdirectories[0][1] == 'uploads'

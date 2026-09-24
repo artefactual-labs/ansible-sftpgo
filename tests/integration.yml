@@ -1,0 +1,73 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: true
+  become: true
+  vars:
+    sftpgo_api_auth_user: sftpgo_ci_admin
+    sftpgo_api_auth_key: sftpgo_ci_admin_password
+    sftpgo_httpd_bind_address: 127.0.0.1
+    sftpgo_httpd_bind_port: 8081
+    sftpgo_sftpd_bind_port: 33322
+    sftpgo_no_log: true
+    sftpgo_users:
+      - user: customer
+        home_dir: /home/sftpgo/customer
+        password: sftpgo_ci_customer_password
+        virtual_folders:
+          - name: ci-protected
+            virtual_path: /protected
+            access: protected
+          - name: ci-read-write
+            virtual_path: /read-write
+            access: read-write
+    sftpgo_s3_virtual_folders:
+      - name: ci-protected
+        bucket: sftpgo-ci
+        region: us-east-1
+        endpoint: "{{ sftpgo_ci_s3_endpoint | default('http://127.0.0.1:8333') }}"
+        force_path_style: true
+        access_key: sftpgo-ci-access
+        access_secret: sftpgo-ci-secret
+        key_prefix: protected/
+        quota_size: 10MB
+        quota_files: 100
+      - name: ci-read-write
+        bucket: sftpgo-ci
+        region: us-east-1
+        endpoint: "{{ sftpgo_ci_s3_endpoint | default('http://127.0.0.1:8333') }}"
+        force_path_style: true
+        access_key: sftpgo-ci-access
+        access_secret: sftpgo-ci-secret
+        key_prefix: read-write/
+  roles:
+    - role: ansible-sftpgo
+
+  post_tasks:
+    - name: Retrieve API token for integration assertions
+      uri:
+        url: http://127.0.0.1:8081/api/v2/token
+        method: GET
+        return_content: yes
+        user: "{{ sftpgo_api_auth_user }}"
+        password: "{{ sftpgo_api_auth_key }}"
+        force_basic_auth: yes
+      register: sftpgo_ci_api_login
+      no_log: true
+
+    - name: Read the created SFTPGo user
+      uri:
+        url: http://127.0.0.1:8081/api/v2/users/customer
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sftpgo_ci_api_login.json.access_token }}"
+        status_code: 200
+      register: sftpgo_ci_user
+      no_log: true
+
+    - name: Verify user mapping, quota and protected permissions
+      assert:
+        that:
+          - sftpgo_ci_user.json.virtual_folders | selectattr('name', 'equalto', 'ci-protected') | map(attribute='quota_size') | first == 10485760
+          - sftpgo_ci_user.json.permissions['/protected'] == ['list', 'download']
+          - sftpgo_ci_user.json.permissions['/read-write'] == ['*']

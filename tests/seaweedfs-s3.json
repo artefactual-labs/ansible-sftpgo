@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "sftpgo-role-ci",
+      "credentials": [
+        {
+          "accessKey": "sftpgo-ci-access",
+          "secretKey": "sftpgo-ci-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}

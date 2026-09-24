@@ -1,0 +1,116 @@
+---
+name: Ansible tests
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Ansible ${{ matrix.ansible_version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible_version:
+          - 2.15.13
+          - 2.19.11
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible Core
+        run: |
+          python -m pip install "ansible-core==${{ matrix.ansible_version }}"
+          ansible-galaxy collection install -r tests/requirements.yml
+
+      - name: Run role syntax check
+        working-directory: tests
+        run: ansible-playbook --syntax-check syntax.yml
+
+      - name: Test virtual-folder mapping resolution
+        working-directory: tests
+        run: ansible-playbook virtual_folder_mappings.yml
+
+  rocky9:
+    name: Rocky Linux 9 / Ansible 2.15.13
+    runs-on: ubuntu-latest
+    container: rockylinux:9
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible Core and role collections
+        run: |
+          dnf install -y git python3 python3-pip
+          python3 -m pip install "ansible-core==2.15.13"
+          ansible-galaxy collection install -r tests/requirements.yml
+
+      - name: Run role syntax check
+        working-directory: tests
+        env:
+          ANSIBLE_LOCAL_TEMP: /tmp/ansible-local
+          ANSIBLE_REMOTE_TEMP: /tmp/ansible-remote
+        run: ansible-playbook --syntax-check syntax.yml
+
+      - name: Test virtual-folder mapping resolution
+        working-directory: tests
+        env:
+          ANSIBLE_LOCAL_TEMP: /tmp/ansible-local
+          ANSIBLE_REMOTE_TEMP: /tmp/ansible-remote
+        run: ansible-playbook virtual_folder_mappings.yml
+
+  integration:
+    name: SFTPGo and SeaweedFS S3 integration
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible and SFTP test client
+        run: |
+          python -m pip install "ansible-core==2.15.13" paramiko boto3
+          ansible-galaxy collection install -r tests/requirements.yml
+
+      - name: Install pinned SeaweedFS
+        run: |
+          curl -fsSL https://github.com/seaweedfs/seaweedfs/releases/download/4.47/linux_amd64.tar.gz -o /tmp/seaweedfs.tar.gz
+          echo "31fb804858885f9e7f18b6d3b1da09e824baac3e6a55b5a62c3c4c77e6ed6d7d  /tmp/seaweedfs.tar.gz" | sha256sum --check
+          tar -xzf /tmp/seaweedfs.tar.gz -C /tmp weed
+          sudo install -m 0755 /tmp/weed /usr/local/bin/weed
+
+      - name: Start SeaweedFS S3 endpoint
+        run: |
+          sudo mkdir -p /tmp/seaweedfs-data
+          sudo sh -c "nohup /usr/local/bin/weed server -dir=/tmp/seaweedfs-data -volume.max=32 -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3 -s3.ip.bind=127.0.0.1 -s3.port=8333 -s3.config=$GITHUB_WORKSPACE/tests/seaweedfs-s3.json >/tmp/seaweedfs.log 2>&1 </dev/null &"
+          for attempt in $(seq 1 30); do
+            if python -c 'import socket; s=socket.create_connection(("127.0.0.1", 8333), timeout=1); s.close()' 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/seaweedfs.log
+          exit 1
+
+      - name: Create test bucket
+        run: python tests/create_s3_bucket.py
+
+      - name: Deploy SFTPGo and S3 virtual folders with the role
+        working-directory: tests
+        env:
+          ANSIBLE_LOCAL_TEMP: /tmp/ansible-local
+          ANSIBLE_REMOTE_TEMP: /tmp/ansible-remote
+        run: ansible-playbook -i localhost, integration.yml --become
+
+      - name: Verify SFTP virtual-folder permissions against SeaweedFS
+        run: python tests/check_sftp_access.py
+
+      - name: Show SeaweedFS logs on failure
+        if: failure()
+        run: cat /tmp/seaweedfs.log
